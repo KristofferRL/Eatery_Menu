@@ -1,0 +1,53 @@
+name: Update menu
+
+on:
+  schedule:
+    - cron: "0 5 * * 1"   # Mondays 05:00 UTC (06:00 Stockholm in winter, 07:00 in summer)
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python deps
+        run: pip install requests
+
+      - name: Download PDF
+        env:
+          MENU_PDF_URL: ${{ secrets.MENU_PDF_URL }}
+        run: |
+          python - <<'PY'
+          import os, requests
+          url = os.environ["MENU_PDF_URL"]
+          r = requests.get(url, timeout=60)
+          r.raise_for_status()
+          open("menu.pdf","wb").write(r.content)
+          print("Downloaded", len(r.content), "bytes")
+          PY
+
+      - name: Convert first page to PNG
+        run: |
+          pdftoppm -png -f 1 -singlefile -rx 200 -ry 200 menu.pdf latest
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "menu-bot"
+          git config user.email "menu-bot@users.noreply.github.com"
+          git add latest.png menu.pdf index.html
+          git diff --staged --quiet || (git commit -m "Update menu" && git push)

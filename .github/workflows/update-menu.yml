@@ -34,32 +34,38 @@ jobs:
         env:
           MENU_PAGE_URL: ${{ secrets.MENU_PAGE_URL }}
         run: |
+          echo "Fetching menu page..."
           python - <<'PY'
           import os
           from playwright.sync_api import sync_playwright
 
-          url = os.environ["MENU_PAGE_URL"]
+          url = os.environ['MENU_PAGE_URL']
 
           with sync_playwright() as p:
-            browser = p.chromium.launch()
-            page = browser.new_page()
-            page.goto(url, wait_until="networkidle")
+              browser = p.chromium.launch()
+              page = browser.new_page()
+              page.goto(url, wait_until='networkidle')
 
-            pdf_url = page.evaluate("""
-              () => {
-                const links = Array.from(document.querySelectorAll('a[href]'))
-                  .map(a => a.href)
-                  .filter(h => h && h.toLowerCase().includes('.pdf'));
-                const preferred = links.find(h => /gate.*sv.*\\.pdf/i.test(h)) || links[0];
-                return preferred || null;
-              }
-            """)
+              pdf_url = page.evaluate("""
+                  () => {
+                      const links = Array.from(document.querySelectorAll('[href],[src]'))
+                          .map(el => el.href || el.src)
+                          .filter(h => h && h.toLowerCase().includes('.pdf'));
+                      const preferred = links.find(h => /gate.*sv.*\.pdf/i.test(h)) || links[0];
+                      return preferred || null;
+                  }
+              """)
 
-            if not pdf_url:
-              raise SystemExit("No PDF link found on page")
+              if not pdf_url:
+                  raise SystemExit("No PDF link found on page")
 
-            print("PDF:", pdf_url)
+              print("PDF found:", pdf_url)
 
-            resp = page.request.get(pdf_url)
-            if not resp.ok:
-              raise SystemExit(f"Fai
+              resp = page.request.get(pdf_url)
+              if not resp.ok:
+                  raise SystemExit(f"Failed to download PDF ({resp.status})")
+
+              open("menu.pdf", "wb").write(resp.body())
+              browser.close()
+          PY
+
